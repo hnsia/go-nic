@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/hnsia/go-nic/handlers"
+	"github.com/hnsia/go-nic/experimental/handlers"
 )
 
 func main() {
