@@ -26,10 +26,12 @@ import (
 	"github.com/hnsia/go-nic/product-api/data"
 )
 
+// Products is a http.Handler
 type Products struct {
 	l *log.Logger
 }
 
+// New products creates a products handler with the given logger
 func NewProducts(l *log.Logger) *Products {
 	return &Products{l}
 }
