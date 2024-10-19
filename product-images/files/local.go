@@ -61,7 +61,6 @@ func (l *Local) Save(path string, contents io.Reader) error {
 
 	// write the contents to the new file
 	// ensure that we are not writing greater than the max bytes
-
 	_, err = io.Copy(f, contents)
 	if err != nil {
 		return xerrors.Errorf("Unable to write to file: %w", err)
