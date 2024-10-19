@@ -9,6 +9,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hnsia/go-nic/product-images/files"
+	"github.com/hnsia/go-nic/product-images/handlers"
 	"github.com/nicholasjackson/env"
 )
 
