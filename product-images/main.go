@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"time"
 
+	gohandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hnsia/go-nic/product-images/files"
@@ -57,10 +58,13 @@ func main() {
 		http.StripPrefix("/images", http.FileServer(http.Dir(*basePath))),
 	)
 
+	// CORS
+	ch := gohandlers.CORS(gohandlers.AllowedOrigins([]string{"http://localhost:3000"}))
+
 	// create a new server
 	s := http.Server{
 		Addr:         *bindAddress,
-		Handler:      sm,
+		Handler:      ch(sm),
 		ErrorLog:     sl,
 		IdleTimeout:  5 * time.Second,
 		ReadTimeout:  5 * time.Second,
