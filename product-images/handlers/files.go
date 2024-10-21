@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-hclog"
@@ -20,8 +22,8 @@ func NewFiles(s files.Storage, l hclog.Logger) *Files {
 	return &Files{store: s, log: l}
 }
 
-// ServeHTTP implements the http.Handler interface
-func (f *Files) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// UploadREST implements the http.Handler interface
+func (f *Files) UploadREST(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 	fn := vars["filename"]
@@ -34,7 +36,34 @@ func (f *Files) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f.saveFile(id, fn, w, r)
+	f.saveFile(id, fn, w, r.Body)
+}
+
+// UploadMultipart ...
+func (f *Files) UploadMultipart(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(128 * 1024)
+	if err != nil {
+		f.log.Error("Bad request", "error", err)
+		http.Error(w, "Expected multipart form data", http.StatusBadRequest)
+		return
+	}
+
+	id, idErr := strconv.Atoi(r.FormValue("id"))
+	f.log.Info("Process form for id", "id", id)
+	if idErr != nil {
+		f.log.Error("Bad request", "error", err)
+		http.Error(w, "Expected integer id", http.StatusBadRequest)
+		return
+	}
+
+	fileToSave, mh, err := r.FormFile("file")
+	if err != nil {
+		f.log.Error("Bad request", "error", err)
+		http.Error(w, "Expected file", http.StatusBadRequest)
+		return
+	}
+
+	f.saveFile(r.FormValue("id"), mh.Filename, w, fileToSave)
 }
 
 func (f *Files) invalidURI(uri string, w http.ResponseWriter) {
@@ -43,11 +72,11 @@ func (f *Files) invalidURI(uri string, w http.ResponseWriter) {
 }
 
 // saveFile saves the contents of the request to a file
-func (f *Files) saveFile(id, path string, w http.ResponseWriter, r *http.Request) {
+func (f *Files) saveFile(id, path string, w http.ResponseWriter, r io.ReadCloser) {
 	f.log.Info("Save file for product", "id", id, "path", path)
 
 	fp := filepath.Join(id, path)
-	err := f.store.Save(fp, r.Body)
+	err := f.store.Save(fp, r)
 	if err != nil {
 		f.log.Error("Unable to save file", "error", err)
 		http.Error(w, "Unable to save file", http.StatusInternalServerError)
