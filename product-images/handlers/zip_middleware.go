@@ -14,6 +14,7 @@ func (g *GzipHandler) GzipMiddleware(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			// create a gzipped response
 			wrw := NewWrappedResponseWriter(w)
+			wrw.Header().Set("Content-Encoding", "gzip")
 
 			next.ServeHTTP(wrw, r)
 			defer wrw.Flush()
