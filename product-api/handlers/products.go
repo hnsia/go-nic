@@ -23,6 +23,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	protos "github.com/hnsia/go-nic/currency/protos/currency/currency"
 	"github.com/hnsia/go-nic/product-api/data"
 )
 
@@ -48,12 +49,13 @@ type productIDParameterWrapper struct {
 
 // Products is a http.Handler
 type Products struct {
-	l *log.Logger
+	l  *log.Logger
+	cc protos.CurrencyClient
 }
 
 // New products creates a products handler with the given logger
-func NewProducts(l *log.Logger) *Products {
-	return &Products{l}
+func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
+	return &Products{l, cc}
 }
 
 // swagger:route GET /products products listProducts
@@ -75,6 +77,30 @@ func (p *Products) GetProducts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Unable to marshal json", http.StatusInternalServerError)
 	}
+}
+
+// func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Add("Content-Type", "application/json")
+
+// 	id := getProductID(r)
+
+// 	p.l.Println("[DEBUG] get record id", id)
+
+// 	prod, err := data.GetProducts()
+// }
+
+// get exchange rate
+func (p *Products) getExchangeRate() {
+	rr := &protos.RateRequest{
+		Base:        protos.Currencies_EUR,
+		Destination: protos.Currencies_GBP,
+	}
+	res, err := p.cc.GetRate(context.Background(), rr)
+	if err != nil {
+		p.l.Println("[Error] error getting new rate", err)
+		return
+	}
+
 }
 
 func (p *Products) AddProduct(w http.ResponseWriter, r *http.Request) {
@@ -165,3 +191,7 @@ func (p *Products) MiddlewareProductValidation(next http.Handler) http.Handler {
 		next.ServeHTTP(w, req)
 	})
 }
+
+// func getProductID(r *http.Request) int {
+
+// }

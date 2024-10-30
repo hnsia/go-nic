@@ -11,13 +11,23 @@ import (
 	"github.com/go-openapi/runtime/middleware"
 	gohandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	protos "github.com/hnsia/go-nic/currency/protos/currency/currency"
 	"github.com/hnsia/go-nic/product-api/handlers"
+	"google.golang.org/grpc"
 )
 
 func main() {
 	l := log.New(os.Stdout, "product-api", log.LstdFlags)
 
-	ph := handlers.NewProducts(l)
+	conn, err := grpc.Dial("localhost:9092")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	// create client
+	cc := protos.NewCurrencyClient(conn)
+
+	ph := handlers.NewProducts(l, cc)
 
 	sm := mux.NewRouter()
 
