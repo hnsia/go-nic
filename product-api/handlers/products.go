@@ -53,6 +53,11 @@ type Products struct {
 	cc protos.CurrencyClient
 }
 
+// GenericError is a generic error message returned by a server
+type GenericError struct {
+	Message string `json:"message"`
+}
+
 // New products creates a products handler with the given logger
 func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
 	return &Products{l, cc}
@@ -79,28 +84,51 @@ func (p *Products) GetProducts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
-// 	w.Header().Add("Content-Type", "application/json")
+func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
 
-// 	id := getProductID(r)
+	id := getProductID(r)
 
-// 	p.l.Println("[DEBUG] get record id", id)
+	p.l.Println("[DEBUG] get record id", id)
 
-// 	prod, err := data.GetProducts()
-// }
+	prod, err := data.GetProductByID(id)
 
-// get exchange rate
-func (p *Products) getExchangeRate() {
+	switch err {
+	case nil:
+
+	case data.ErrProductNotFound:
+		p.l.Println("[Error] fetching product", err)
+
+		w.WriteHeader(http.StatusNotFound)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
+		return
+	default:
+		p.l.Println("[ERROR] fetching product", err)
+
+		w.WriteHeader(http.StatusInternalServerError)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
+		return
+	}
+
+	// get exchange rate
 	rr := &protos.RateRequest{
 		Base:        protos.Currencies_EUR,
 		Destination: protos.Currencies_GBP,
 	}
+
 	res, err := p.cc.GetRate(context.Background(), rr)
 	if err != nil {
 		p.l.Println("[Error] error getting new rate", err)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
 		return
 	}
 
+	prod.Price = prod.Price * res.Rate
+
+	err = data.ToJSON(prod, w)
+	if err != nil {
+		p.l.Println("[Error] serializing product", err)
+	}
 }
 
 func (p *Products) AddProduct(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +220,20 @@ func (p *Products) MiddlewareProductValidation(next http.Handler) http.Handler {
 	})
 }
 
-// func getProductID(r *http.Request) int {
+// getProductID returns the product ID from the URL
+// Panics if cannot convert the id into an integer
+// this should never happen as the router ensures that
+// this is a valid number
+func getProductID(r *http.Request) int {
+	// parse the product id from the url
+	vars := mux.Vars(r)
 
-// }
+	// convert the id into an integer and return
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		// should never happen
+		panic(err)
+	}
+
+	return id
+}

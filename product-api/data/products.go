@@ -81,6 +81,18 @@ func GetProducts() Products {
 	return productList
 }
 
+// GetProductByID returns a single product which matches the id from the
+// database.
+// If a product is not found this function returns a ProductNotFound error
+func GetProductByID(id int) (*Product, error) {
+	product, _, err := findProduct(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return product, nil
+}
+
 func AddProduct(p *Product) {
 	p.ID = getNextID()
 	productList = append(productList, p)
