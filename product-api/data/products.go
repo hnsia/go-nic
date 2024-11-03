@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/hashicorp/go-hclog"
+	protos "github.com/hnsia/go-nic/currency/protos/currency/currency"
 )
 
 // Product defines the structure for an API product
@@ -35,7 +38,7 @@ type Product struct {
 	//
 	// required: true
 	// min: 0.01
-	Price float32 `json:"price" validate:"gt=0"`
+	Price float64 `json:"price" validate:"gt=0"`
 
 	// the SKU for the product
 	//
@@ -72,13 +75,44 @@ func validateSKU(fl validator.FieldLevel) bool {
 
 type Products []*Product
 
+type ProductsDB struct {
+	currency protos.CurrencyClient
+	log      hclog.Logger
+}
+
+func NewProductsDB(c protos.CurrencyClient, l hclog.Logger) *ProductsDB {
+	return &ProductsDB{c, l}
+}
+
 func (p *Products) ToJSON(w io.Writer) error {
 	e := json.NewEncoder(w)
 	return e.Encode(p)
 }
 
-func GetProducts() Products {
-	return productList
+func (p *ProductsDB) GetProducts(currency string) (Products, error) {
+	if currency == "" {
+		return productList, nil
+	}
+
+	rr := &protos.RateRequest{
+		Base:        protos.Currencies_EUR,
+		Destination: protos.Currencies_GBP,
+	}
+
+	res, err := p.currency.GetRate(context.Background(), rr)
+	if err != nil {
+		p.log.Error("Unable to get rate", "currency", currency, "error", err)
+		return nil, err
+	}
+
+	pr := Products{}
+	for _, p := range productList {
+		np := *p
+		np.Price = np.Price * res.Rate
+		pr = append(pr, &np)
+	}
+
+	return pr, nil
 }
 
 // GetProductByID returns a single product which matches the id from the
