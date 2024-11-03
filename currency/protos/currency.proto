@@ -19,7 +19,7 @@ message RateRequest {
 // rate which is a floating point number and can be used to convert between the
 // two currencies specified in the request
 message RateResponse {
-    float Rate = 1;
+    double Rate = 1;
 }
 
 // Currencies is an enum which represents the allowed/supported currencies for the API
