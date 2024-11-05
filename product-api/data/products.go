@@ -94,12 +94,7 @@ func (p *ProductsDB) GetProducts(currency string) (Products, error) {
 		return productList, nil
 	}
 
-	rr := &protos.RateRequest{
-		Base:        protos.Currencies_EUR,
-		Destination: protos.Currencies_GBP,
-	}
-
-	res, err := p.currency.GetRate(context.Background(), rr)
+	rate, err := p.getRate(currency)
 	if err != nil {
 		p.log.Error("Unable to get rate", "currency", currency, "error", err)
 		return nil, err
@@ -108,7 +103,7 @@ func (p *ProductsDB) GetProducts(currency string) (Products, error) {
 	pr := Products{}
 	for _, p := range productList {
 		np := *p
-		np.Price = np.Price * res.Rate
+		np.Price = np.Price * rate
 		pr = append(pr, &np)
 	}
 
@@ -118,13 +113,26 @@ func (p *ProductsDB) GetProducts(currency string) (Products, error) {
 // GetProductByID returns a single product which matches the id from the
 // database.
 // If a product is not found this function returns a ProductNotFound error
-func GetProductByID(id int) (*Product, error) {
-	product, _, err := findProduct(id)
+func (p *ProductsDB) GetProductByID(id int, currency string) (*Product, error) {
+	product, i, err := findProduct(id)
 	if err != nil {
 		return nil, err
 	}
 
-	return product, nil
+	if currency == "" {
+		return product, nil
+	}
+
+	rate, err := p.getRate(currency)
+	if err != nil {
+		p.log.Error("Unable to get rate", "currency", currency, "error", err)
+		return nil, err
+	}
+
+	np := *productList[i]
+	np.Price = np.Price * rate
+
+	return &np, nil
 }
 
 func AddProduct(p *Product) {
@@ -169,6 +177,16 @@ func findProduct(id int) (*Product, int, error) {
 func getNextID() int {
 	lp := productList[len(productList)-1]
 	return lp.ID + 1
+}
+
+func (p *ProductsDB) getRate(destination string) (float64, error) {
+	rr := &protos.RateRequest{
+		Base:        protos.Currencies_EUR,
+		Destination: protos.Currencies(protos.Currencies_value[destination]),
+	}
+
+	res, err := p.currency.GetRate(context.Background(), rr)
+	return res.Rate, err
 }
 
 var productList = []*Product{
