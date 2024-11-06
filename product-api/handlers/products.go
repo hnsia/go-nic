@@ -18,12 +18,11 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
-	protos "github.com/hnsia/go-nic/currency/protos/currency/currency"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hnsia/go-nic/product-api/data"
 )
 
@@ -49,8 +48,8 @@ type productIDParameterWrapper struct {
 
 // Products is a http.Handler
 type Products struct {
-	l  *log.Logger
-	cc protos.CurrencyClient
+	l         hclog.Logger
+	productDB *data.ProductsDB
 }
 
 // GenericError is a generic error message returned by a server
@@ -59,8 +58,8 @@ type GenericError struct {
 }
 
 // New products creates a products handler with the given logger
-func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
-	return &Products{l, cc}
+func NewProducts(l hclog.Logger, pdb *data.ProductsDB) *Products {
+	return &Products{l, pdb}
 }
 
 // swagger:route GET /products products listProducts
@@ -70,16 +69,22 @@ func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
 
 // GetProducts returns the products from the data store
 func (p *Products) GetProducts(w http.ResponseWriter, r *http.Request) {
-	p.l.Println("Handle GET Products")
+	p.l.Debug("Get all records")
 
 	w.Header().Add("Content-Type", "application/json")
 
 	// fetch the products from the data store
-	lp := data.GetProducts()
+	lp, err := p.productDB.GetProducts("")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
+		return
+	}
 
 	// serialize the list to JSON
-	err := lp.ToJSON(w)
+	err = data.ToJSON(lp, w)
 	if err != nil {
+		p.l.Error("Unable to serialize product", "error", err)
 		http.Error(w, "Unable to marshal json", http.StatusInternalServerError)
 	}
 }
@@ -89,45 +94,30 @@ func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
 
 	id := getProductID(r)
 
-	p.l.Println("[DEBUG] get record id", id)
+	p.l.Debug("Get record", "id", id)
 
-	prod, err := data.GetProductByID(id)
+	prod, err := p.productDB.GetProductByID(id, "")
 
 	switch err {
 	case nil:
 
 	case data.ErrProductNotFound:
-		p.l.Println("[Error] fetching product", err)
+		p.l.Error("Unable to fetch product", "error", err)
 
 		w.WriteHeader(http.StatusNotFound)
 		data.ToJSON(&GenericError{Message: err.Error()}, w)
 		return
 	default:
-		p.l.Println("[ERROR] fetching product", err)
+		p.l.Error("Unable to fetch product", "error", err)
 
 		w.WriteHeader(http.StatusInternalServerError)
 		data.ToJSON(&GenericError{Message: err.Error()}, w)
 		return
 	}
 
-	// get exchange rate
-	rr := &protos.RateRequest{
-		Base:        protos.Currencies_EUR,
-		Destination: protos.Currencies_GBP,
-	}
-
-	res, err := p.cc.GetRate(context.Background(), rr)
-	if err != nil {
-		p.l.Println("[Error] error getting new rate", err)
-		data.ToJSON(&GenericError{Message: err.Error()}, w)
-		return
-	}
-
-	prod.Price = prod.Price * res.Rate
-
 	err = data.ToJSON(prod, w)
 	if err != nil {
-		p.l.Println("[Error] serializing product", err)
+		p.l.Error("error serializing product", "error", err)
 	}
 }
 
