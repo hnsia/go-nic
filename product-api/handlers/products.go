@@ -122,10 +122,10 @@ func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Products) AddProduct(w http.ResponseWriter, r *http.Request) {
-	p.l.Println("Handle POST Product")
-
 	prod := r.Context().Value(KeyProduct{}).(data.Product)
-	data.AddProduct(&prod)
+
+	p.l.Debug("Inserting product: %#v\n", prod)
+	p.productDB.AddProduct(&prod)
 }
 
 func (p *Products) UpdateProducts(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +136,7 @@ func (p *Products) UpdateProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.l.Println("Handle PUT Product", id)
+	p.l.Debug("Handle PUT Product", id)
 
 	prod := r.Context().Value(KeyProduct{}).(data.Product)
 
@@ -163,19 +163,26 @@ func (p *Products) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, _ := strconv.Atoi(vars["id"])
 
-	p.l.Println("Handle DELETE Product", id)
+	p.l.Debug("Deleting record", "id", id)
 
-	err := data.DeleteProduct(id)
-
+	err := p.productDB.DeleteProduct(id)
 	if err == data.ErrProductNotFound {
-		http.Error(w, "Product not found", http.StatusNotFound)
+		p.l.Error("Unable to delete record, id does not exist")
+
+		w.WriteHeader(http.StatusNotFound)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
 		return
 	}
 
 	if err != nil {
-		http.Error(w, "Product not found", http.StatusInternalServerError)
+		p.l.Error("Unable to delete record", "error", err)
+
+		w.WriteHeader(http.StatusInternalServerError)
+		data.ToJSON(&GenericError{Message: err.Error()}, w)
 		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type KeyProduct struct{}
@@ -186,7 +193,7 @@ func (p *Products) MiddlewareProductValidation(next http.Handler) http.Handler {
 
 		err := prod.FromJSON(r.Body)
 		if err != nil {
-			p.l.Println("[ERROR] deserializing product", err)
+			p.l.Error("Unable to deserialize product", "error", err)
 			http.Error(w, "Unable to unmarshal json, error reading product", http.StatusBadRequest)
 			return
 		}
@@ -194,7 +201,7 @@ func (p *Products) MiddlewareProductValidation(next http.Handler) http.Handler {
 		// validate the product
 		err = prod.Validate()
 		if err != nil {
-			p.l.Println("[ERROR] validating product", err)
+			p.l.Error("Unable to validate product", "error", err)
 			http.Error(
 				w,
 				fmt.Sprintf("Error validating product: %s", err),

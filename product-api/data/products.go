@@ -135,7 +135,7 @@ func (p *ProductsDB) GetProductByID(id int, currency string) (*Product, error) {
 	return &np, nil
 }
 
-func AddProduct(p *Product) {
+func (pdb *ProductsDB) AddProduct(p *Product) {
 	p.ID = getNextID()
 	productList = append(productList, p)
 }
@@ -152,7 +152,7 @@ func UpdateProduct(id int, p *Product) error {
 	return nil
 }
 
-func DeleteProduct(id int) error {
+func (p *ProductsDB) DeleteProduct(id int) error {
 	_, pos, err := findProduct(id)
 	if err != nil {
 		return err
