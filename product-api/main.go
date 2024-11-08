@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,13 +10,15 @@ import (
 	"github.com/go-openapi/runtime/middleware"
 	gohandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-hclog"
 	protos "github.com/hnsia/go-nic/currency/protos/currency/currency"
+	"github.com/hnsia/go-nic/product-api/data"
 	"github.com/hnsia/go-nic/product-api/handlers"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	l := log.New(os.Stdout, "product-api", log.LstdFlags)
+	l := hclog.Default()
 
 	conn, err := grpc.Dial("localhost:9092", grpc.WithInsecure())
 	if err != nil {
@@ -27,7 +28,10 @@ func main() {
 	// create client
 	cc := protos.NewCurrencyClient(conn)
 
-	ph := handlers.NewProducts(l, cc)
+	// create database instance
+	db := data.NewProductsDB(cc, l)
+
+	ph := handlers.NewProducts(l, db)
 
 	sm := mux.NewRouter()
 
@@ -56,18 +60,18 @@ func main() {
 	s := http.Server{
 		Addr:         ":9090",
 		Handler:      ch(sm),
-		ErrorLog:     l,
+		ErrorLog:     l.StandardLogger(&hclog.StandardLoggerOptions{}),
 		IdleTimeout:  120 * time.Second,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
 	go func() {
-		l.Println("Starting server on port :9090")
+		l.Info("Starting server on port :9090")
 
 		err := s.ListenAndServe()
 		if err != nil {
-			l.Printf("Error starting server: %s\n", err)
+			l.Error("Error starting server: %s\n", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -77,7 +81,7 @@ func main() {
 	signal.Notify(sigChan, os.Kill)
 
 	sig := <-sigChan // blocking until a message is received
-	l.Println("Received terminate, graceful shutdown", sig)
+	l.Info("Received terminate, graceful shutdown", "signal", sig)
 
 	tc, _ := context.WithTimeout(context.Background(), 30*time.Second)
 	s.Shutdown(tc)
