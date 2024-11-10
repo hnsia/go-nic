@@ -3,27 +3,42 @@ consumes:
     - application/json
 definitions:
     Product:
-        description: Product defines the structure for an API product
+        description: Product Product defines the structure for an API product
         properties:
             description:
+                description: description
+                maxLength: 10000
                 type: string
                 x-go-name: Description
             id:
+                description: ID
                 format: int64
+                minimum: 1
                 type: integer
                 x-go-name: ID
             name:
+                description: name
+                maxLength: 255
                 type: string
                 x-go-name: Name
             price:
+                description: price
                 format: float
+                minimum: 0.01
                 type: number
                 x-go-name: Price
             sku:
+                description: s k u
+                pattern: '[a-z]+-[a-z]+-[a-z]+'
                 type: string
                 x-go-name: SKU
+        required:
+            - id
+            - name
+            - price
+            - sku
         type: object
-        x-go-package: github.com/hnsia/go-nic/product-api/data
+        x-go-package: github.com/hnsia/go-nic/product-api/client/models
 info:
     description: Documentation for Product API
     title: of Product API
@@ -33,6 +48,13 @@ paths:
         get:
             description: Returns a list of products
             operationId: listProducts
+            parameters:
+                - description: |-
+                    Currency used when returning the price of the product,
+                    when not specified, currency is returned in GBP.
+                  in: query
+                  name: Currency
+                  type: string
             responses:
                 "200":
                     $ref: '#/responses/productsResponse'

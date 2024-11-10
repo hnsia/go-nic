@@ -38,6 +38,15 @@ type productsResponse struct {
 type productsNoContent struct {
 }
 
+// swagger:parameters listProducts listSingleProduct
+type productQueryParam struct {
+	// Currency used when returning the price of the product,
+	// when not specified, currency is returned in GBP.
+	// in: query
+	// required: false
+	Currency string
+}
+
 // swagger:parameters deleteProduct
 type productIDParameterWrapper struct {
 	// The id of the product to delete from the database
@@ -73,8 +82,10 @@ func (p *Products) GetProducts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 
+	cur := r.URL.Query().Get("currency")
+
 	// fetch the products from the data store
-	lp, err := p.productDB.GetProducts("")
+	lp, err := p.productDB.GetProducts(cur)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data.ToJSON(&GenericError{Message: err.Error()}, w)
@@ -93,10 +104,11 @@ func (p *Products) ListSingle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 
 	id := getProductID(r)
+	cur := r.URL.Query().Get("currency")
 
 	p.l.Debug("Get record", "id", id)
 
-	prod, err := p.productDB.GetProductByID(id, "")
+	prod, err := p.productDB.GetProductByID(id, cur)
 
 	switch err {
 	case nil:
