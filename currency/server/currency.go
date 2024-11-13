@@ -18,6 +18,13 @@ type Currency struct {
 }
 
 func NewCurrency(r *data.ExchangeRates, l hclog.Logger) *Currency {
+	go func() {
+		ru := r.MonitorRates(5 * time.Second)
+		for range ru {
+			l.Info("Got updated rates")
+		}
+	}()
+
 	return &Currency{r, l, protos.UnimplementedCurrencyServer{}}
 }
 
