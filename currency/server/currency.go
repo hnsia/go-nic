@@ -12,20 +12,43 @@ import (
 )
 
 type Currency struct {
-	rates *data.ExchangeRates
-	log   hclog.Logger
+	rates         *data.ExchangeRates
+	log           hclog.Logger
+	subscriptions map[protos.Currency_SubscribeRatesServer][]*protos.RateRequest
 	protos.UnimplementedCurrencyServer
 }
 
 func NewCurrency(r *data.ExchangeRates, l hclog.Logger) *Currency {
-	go func() {
-		ru := r.MonitorRates(5 * time.Second)
-		for range ru {
-			l.Info("Got updated rates")
-		}
-	}()
+	subscriptions := make(map[protos.Currency_SubscribeRatesServer][]*protos.RateRequest)
 
-	return &Currency{r, l, protos.UnimplementedCurrencyServer{}}
+	c := &Currency{r, l, subscriptions, protos.UnimplementedCurrencyServer{}}
+	go c.handleUpdates()
+
+	return c
+}
+
+func (c *Currency) handleUpdates() {
+	ru := c.rates.MonitorRates(5 * time.Second)
+	for range ru {
+		c.log.Info("Got updated rates")
+
+		// loop over subscribed clients
+		for k, v := range c.subscriptions {
+
+			// loop over subscribed rates
+			for _, rr := range v {
+				r, err := c.rates.GetRate(rr.GetBase().String(), rr.GetDestination().String())
+				if err != nil {
+					c.log.Error("Unable to get updated rate", "base", rr.GetBase().String(), "destination", rr.GetDestination().String())
+				}
+
+				err = k.Send(&protos.RateResponse{Base: rr.Base, Destination: rr.Destination, Rate: r})
+				if err != nil {
+					c.log.Error("Unable to send updated rate", "base", rr.GetBase().String(), "destination", rr.GetDestination().String())
+				}
+			}
+		}
+	}
 }
 
 func (c *Currency) GetRate(ctx context.Context, rr *protos.RateRequest) (*protos.RateResponse, error) {
@@ -36,33 +59,41 @@ func (c *Currency) GetRate(ctx context.Context, rr *protos.RateRequest) (*protos
 		return nil, err
 	}
 
-	return &protos.RateResponse{Rate: rate}, nil
+	return &protos.RateResponse{Base: rr.Base, Destination: rr.Destination, Rate: rate}, nil
 }
 
+// SubscribeRates implements the gRPC bidirectional streaming method for the server
 func (c *Currency) SubscribeRates(src grpc.BidiStreamingServer[protos.RateRequest, protos.RateResponse]) error {
 
-	go func() {
-		for {
-			rr, err := src.Recv()
-			if err == io.EOF {
-				c.log.Info("Client has closed connection")
-				break
-			}
-
-			if err != nil {
-				c.log.Error("Unable to read from client", "error", err)
-				break
-			}
-			c.log.Info("Handle client request", "request", rr)
-		}
-	}()
-
+	// handle client messages
 	for {
-		err := src.Send(&protos.RateResponse{Rate: 12.1})
+		rr, err := src.Recv() // Recv is a blocking method which returns on client data
+		// io.EOF signals that the client has closed the connection
+		if err == io.EOF {
+			c.log.Info("Client has closed connection")
+			break
+		}
+
+		// any other error means the transport between the server and client is unavailable
 		if err != nil {
+			c.log.Error("Unable to read from client", "error", err)
 			return err
 		}
 
-		time.Sleep(5 * time.Second)
+		c.log.Info("Handle client request", "request", rr)
+		rrs, ok := c.subscriptions[src]
+		if !ok {
+			rrs = []*protos.RateRequest{}
+		}
+
+		rrs = append(rrs, rr)
+		c.subscriptions[src] = rrs
 	}
+
+	return nil
 }
+
+// {
+// 	"Base": "JPY",
+// 	"Destination": "USD"
+// }
