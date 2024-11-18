@@ -1,11 +1,13 @@
 syntax = "proto3";
 
+import "google/rpc/status.proto";
+
 option go_package = "/currency";
 
 service Currency {
     // GetRate returns the exchange rate for the two provided currency codes
     rpc GetRate(RateRequest) returns (RateResponse);
-    rpc SubscribeRates(stream RateRequest) returns (stream RateResponse);
+    rpc SubscribeRates(stream RateRequest) returns (stream StreamingRateResponse);
 }
 
 // RateRequest defines the request for a GetRate call
@@ -26,6 +28,13 @@ message RateResponse {
     Currencies Destination = 2;
     // Rate is the returned currency rate
     double Rate = 3;
+}
+
+message StreamingRateResponse {
+    oneof message {
+        RateResponse rate_response = 1;
+        google.rpc.Status error = 2;
+    }
 }
 
 // Currencies is an enum which represents the allowed/supported currencies for the API

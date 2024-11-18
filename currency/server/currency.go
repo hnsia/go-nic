@@ -81,7 +81,7 @@ func (c *Currency) GetRate(ctx context.Context, rr *protos.RateRequest) (*protos
 }
 
 // SubscribeRates implements the gRPC bidirectional streaming method for the server
-func (c *Currency) SubscribeRates(src grpc.BidiStreamingServer[protos.RateRequest, protos.RateResponse]) error {
+func (c *Currency) SubscribeRates(src grpc.BidiStreamingServer[protos.RateRequest, protos.StreamingRateResponse]) error {
 
 	// handle client messages
 	for {
@@ -102,6 +102,39 @@ func (c *Currency) SubscribeRates(src grpc.BidiStreamingServer[protos.RateReques
 		rrs, ok := c.subscriptions[src]
 		if !ok {
 			rrs = []*protos.RateRequest{}
+		}
+
+		// check that subscription does not exists
+		var validationError *status.Status
+		for _, v := range rrs {
+			if v.Base == rr.Base && v.Destination == rr.Destination {
+				// subscription exists return errors
+				validationError := status.Newf(
+					codes.AlreadyExists,
+					"Unable to subscribe for currency as subscription already exists",
+				)
+
+				// add the original request as metadata
+				validationError, err = validationError.WithDetails(rr)
+				if err != nil {
+					c.log.Error("Unable to add metadata to error", "error", err)
+					break
+				}
+
+				break
+			}
+		}
+
+		// if validation error return, error and continue
+		if validationError != nil {
+			src.Send(
+				&protos.StreamingRateResponse{
+					Message: &protos.StreamingRateResponse_Error{
+						Error: validationError.Proto(),
+					},
+				},
+			)
+			continue
 		}
 
 		rrs = append(rrs, rr)
